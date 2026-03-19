@@ -304,18 +304,25 @@ update_build_gradle_url() {
     local new_url="$2"
     [[ -f "$file_path" ]] || return 1
 
-    local content updated
-    content="$(<"$file_path")"
     if ! grep -Eq '^[[:space:]]*baseUrl[[:space:]]*=[[:space:]]*["'\'']https?://[^"'\''"]+["'\'']' "$file_path"; then
         return 1
     fi
 
-    updated="$(NEW_URL="$new_url" perl -0777 -pe 's{(?m)^(\s*baseUrl\s*=\s*["'\''])(https?://[^"'\''"]+)(["'\''])}{$1.$ENV{NEW_URL}.$3}e' "$file_path")"
-    if [[ "$updated" != "$content" ]]; then
-        printf '%s' "$updated" >"$file_path"
-        return 0
+    local tmp_file
+    tmp_file="$(mktemp)"
+    if ! NEW_URL="$new_url" perl -0777 -pe 's{(?m)^(\s*baseUrl\s*=\s*["'\''])(https?://[^"'\''"]+)(["'\''])}{$1.$ENV{NEW_URL}.$3}e' "$file_path" > "$tmp_file"; then
+        rm -f "$tmp_file"
+        return 1
     fi
-    return 1
+
+    if cmp -s "$file_path" "$tmp_file"; then
+        rm -f "$tmp_file"
+        return 1
+    fi
+
+    cat "$tmp_file" > "$file_path"
+    rm -f "$tmp_file"
+    return 0
 }
 
 update_kt_url() {
@@ -324,15 +331,24 @@ update_kt_url() {
     local new_url="$3"
     [[ -f "$file_path" ]] || return 1
 
-    local content updated escaped_old
-    content="$(<"$file_path")"
+    local escaped_old
     escaped_old="$(escape_perl_re "$old_url")"
-    updated="$(OLD_ESCAPED="$escaped_old" NEW_URL="$new_url" perl -0777 -pe 's/$ENV{OLD_ESCAPED}/$ENV{NEW_URL}/g' "$file_path")"
-    if [[ "$updated" != "$content" ]]; then
-        printf '%s' "$updated" >"$file_path"
-        return 0
+
+    local tmp_file
+    tmp_file="$(mktemp)"
+    if ! OLD_ESCAPED="$escaped_old" NEW_URL="$new_url" perl -0777 -pe 's/$ENV{OLD_ESCAPED}/$ENV{NEW_URL}/g' "$file_path" > "$tmp_file"; then
+        rm -f "$tmp_file"
+        return 1
     fi
-    return 1
+
+    if cmp -s "$file_path" "$tmp_file"; then
+        rm -f "$tmp_file"
+        return 1
+    fi
+
+    cat "$tmp_file" > "$file_path"
+    rm -f "$tmp_file"
+    return 0
 }
 
 VERSION_UPDATED=0
@@ -352,36 +368,51 @@ update_version_code() {
 
     [[ -f "$file_path" ]] || return 0
 
-    local content updated old_value new_value
-    content="$(<"$file_path")"
+    local old_value new_value
 
     old_value="$(perl -ne 'if (/^\s*extVersionCode\s*=\s*(\d+)/) { print $1; exit }' "$file_path")"
     if [[ -n "$old_value" ]]; then
         new_value=$((old_value + 1))
-        updated="$(NEW_NUM="$new_value" perl -0777 -pe 's{(?m)^(\s*extVersionCode\s*=\s*)\d+(\s*(?://.*)?$)}{$1.$ENV{NEW_NUM}.$2}e' "$file_path")"
         VERSION_FOUND=1
         VERSION_MODE="extVersionCode"
         VERSION_OLD="$old_value"
         VERSION_NEW="$new_value"
-        if [[ "$updated" != "$content" ]]; then
-            printf '%s' "$updated" >"$file_path"
+
+        local tmp_file
+        tmp_file="$(mktemp)"
+        if ! NEW_NUM="$new_value" perl -0777 -pe 's{(?m)^(\s*extVersionCode\s*=\s*)\d+(\s*(?://.*)?$)}{$1.$ENV{NEW_NUM}.$2}e' "$file_path" > "$tmp_file"; then
+            rm -f "$tmp_file"
+            return 0
+        fi
+
+        if ! cmp -s "$file_path" "$tmp_file"; then
+            cat "$tmp_file" > "$file_path"
             VERSION_UPDATED=1
         fi
+        rm -f "$tmp_file"
         return 0
     fi
 
     old_value="$(perl -ne 'if (/^\s*overrideVersionCode\s*=\s*(\d+)/) { print $1; exit }' "$file_path")"
     if [[ -n "$old_value" ]]; then
         new_value=$((old_value + 1))
-        updated="$(NEW_NUM="$new_value" perl -0777 -pe 's{(?m)^(\s*overrideVersionCode\s*=\s*)\d+(\s*(?://.*)?$)}{$1.$ENV{NEW_NUM}.$2}e' "$file_path")"
         VERSION_FOUND=1
         VERSION_MODE="overrideVersionCode"
         VERSION_OLD="$old_value"
         VERSION_NEW="$new_value"
-        if [[ "$updated" != "$content" ]]; then
-            printf '%s' "$updated" >"$file_path"
+
+        local tmp_file
+        tmp_file="$(mktemp)"
+        if ! NEW_NUM="$new_value" perl -0777 -pe 's{(?m)^(\s*overrideVersionCode\s*=\s*)\d+(\s*(?://.*)?$)}{$1.$ENV{NEW_NUM}.$2}e' "$file_path" > "$tmp_file"; then
+            rm -f "$tmp_file"
+            return 0
+        fi
+
+        if ! cmp -s "$file_path" "$tmp_file"; then
+            cat "$tmp_file" > "$file_path"
             VERSION_UPDATED=1
         fi
+        rm -f "$tmp_file"
         return 0
     fi
 
