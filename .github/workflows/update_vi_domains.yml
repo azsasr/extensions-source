@@ -31,6 +31,7 @@ jobs:
 
       - name: Run update-domains.sh for src/vi
         env:
+          EXCLUDE: ${{ vars.EXCLUDE }}
           PROXY_HOST: ${{ secrets.PROXY_HOST }}
           PROXY_PORT: ${{ secrets.PROXY_PORT }}
           PROXY_USER: ${{ secrets.PROXY_USER }}
@@ -41,6 +42,18 @@ jobs:
           cd repo
           ./.github/scripts/update-domains.sh --root-path ./src/vi --timeout-sec 20
 
+      - name: Upload logs.txt artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vi-update-logs-${{ github.run_id }}
+          path: repo/src/vi/logs.txt
+          if-no-files-found: ignore
+
+      - name: Remove logs.txt
+        if: always()
+        run: rm -f repo/src/vi/logs.txt
+
       - name: Create branch, commit src/vi changes, and push to fork
         id: commit_push
         env:
@@ -48,7 +61,7 @@ jobs:
         run: |
           cd repo
 
-          BRANCH_NAME="auto/vi-update-$(date -u +'%Y%m%d-%H%M%S')"
+          BRANCH_NAME="$(date -u +'%H%M%S-%d%m%Y')"
           git checkout -b "$BRANCH_NAME"
 
           git config user.name "${{ github.repository_owner }}"
@@ -62,7 +75,7 @@ jobs:
             exit 0
           fi
 
-          git commit -m "chore(vi): auto update redirected domains"
+          git commit -m "Update some domains"
           git remote add fork "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
           git push fork "$BRANCH_NAME"
 
