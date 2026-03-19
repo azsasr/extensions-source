@@ -61,7 +61,7 @@ jobs:
         run: |
           cd repo
 
-          BRANCH_NAME="$(date -u +'%H:%M:%S-%d/%m/%Y')"
+          BRANCH_NAME="$(date -u +'%H%M%S-%d%m%Y')"
           git checkout -b "$BRANCH_NAME"
 
           git config user.name "${{ github.repository_owner }}"
