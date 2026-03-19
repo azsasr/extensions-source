@@ -5,6 +5,7 @@ set -o pipefail
 
 ROOT_PATH=""
 TIMEOUT_SEC=20
+EXCLUDE_RAW="${EXCLUDE:-}"
 PROXY_HOST="${PROXY_HOST:-}"
 PROXY_PORT="${PROXY_PORT:-}"
 PROXY_USER="${PROXY_USER:-}"
@@ -401,11 +402,29 @@ array_contains() {
     return 1
 }
 
+trim_text() {
+    local s="${1:-}"
+    s="${s//$'\r'/}"
+    s="${s#"${s%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
+    printf '%s' "$s"
+}
+
 declare -a sources
 mapfile -t sources < <(find "$RESOLVED_ROOT" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort)
 
 declare -a detail_lines
 declare -a changed_entries
+declare -A excluded_sources
+
+if [[ -n "$EXCLUDE_RAW" ]]; then
+    while IFS= read -r raw_line; do
+        exclude_name="$(trim_text "$raw_line")"
+        if [[ -n "$exclude_name" ]]; then
+            excluded_sources["$exclude_name"]=1
+        fi
+    done <<< "$EXCLUDE_RAW"
+fi
 
 if ! check_proxy_connection; then
     exit 1
@@ -414,6 +433,12 @@ fi
 echo "Found ${#sources[@]} sources in $RESOLVED_ROOT"
 
 for source_name in "${sources[@]}"; do
+    if [[ -n "${excluded_sources[$source_name]:-}" ]]; then
+        detail_lines+=("[SKIP-EXCLUDED] $source_name | Listed in EXCLUDE input")
+        echo "[SKIP-EXCLUDED] $source_name"
+        continue
+    fi
+
     source_dir="$RESOLVED_ROOT/$source_name"
     build_file="$source_dir/build.gradle"
     build_content=""
